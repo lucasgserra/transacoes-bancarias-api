@@ -1,13 +1,21 @@
 package dev.serra.transacoes_bancarias_api.extrato
 
-import dev.serra.transacoes_bancarias_api.extrato.enum.TipoTransacao
-import dev.serra.transacoes_bancarias_api.usuario.Usuario
+import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Service
-import java.util.*
 
 @Service
-class ExtratoService(private val repository: ExtratoRepository) {
+class ExtratoService(private val extratoRepository: ExtratoRepository) {
 
-    fun adicionarExtrato(extrato: Extrato) = repository.save(extrato)
+    @EventListener
+    fun registrarExtrato(event: Extrato) {
+        val extrato = Extrato(
+            idUsuario = event.idUsuario,
+            valor = event.valor,
+            transacao = event.transacao,
+            idDestinatario = event.idDestinatario ?: null,
+        )
+        extratoRepository.save(extrato)
+    }
 
+    fun pegarExtratos(): List<Extrato> = extratoRepository.findAll()
 }

@@ -3,16 +3,20 @@ package dev.serra.transacoes_bancarias_api.usuario
 import dev.serra.transacoes_bancarias_api.exceptions.NotAcceptableEntity
 import dev.serra.transacoes_bancarias_api.exceptions.NotFoundEntity
 import dev.serra.transacoes_bancarias_api.exceptions.UnprocessableEntity
+import dev.serra.transacoes_bancarias_api.extrato.DispararExtrato
 import dev.serra.transacoes_bancarias_api.extrato.Extrato
-import dev.serra.transacoes_bancarias_api.extrato.ExtratoService
+import dev.serra.transacoes_bancarias_api.extrato.enum.TipoTransacao
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.data.jpa.domain.AbstractPersistable_.id
 import org.springframework.stereotype.Service
 import java.util.Optional
 import java.util.UUID
 
 @Service
-class UsuarioService(private val repository: UsuarioRepository) {
+class UsuarioService(
+    private val repository: UsuarioRepository,
+    private val extrato: DispararExtrato) {
 
     private val log: Logger = LoggerFactory.getLogger(UsuarioService::class.java)
 
@@ -48,8 +52,13 @@ class UsuarioService(private val repository: UsuarioRepository) {
             val saldoAtual: Double = u.get().saldo
             val saldoFinal = saldoAtual + valor
             val usuario: Usuario = u.get().copy(saldo = saldoFinal)
-
+            extrato.publicarEvento(Extrato(
+                idUsuario = UUID.fromString(id),
+                valor = valor,
+                transacao = TipoTransacao.DEPOSITO,
+            ))
             repository.save(usuario)
+
         } else {
             log.error("Usuario nao encontrado com o ID informado ")
             throw NotFoundEntity("Usuario nao encontrado")
@@ -58,6 +67,10 @@ class UsuarioService(private val repository: UsuarioRepository) {
 
     fun realizarTransferencia(idRemetente: String, idDestinatario: String, valor: Double): Unit {
         log.info("Iniciado processo de transferencia bancaria")
+        if (idRemetente === idDestinatario) {
+            log.error("Voce nao pode fazer uma transferencia para voce mesmo")
+            throw UnprocessableEntity("Voce nao pode fazer uma transferencia para voce mesmo")
+        }
         val usuarioRemetente: Optional<Usuario> = repository.findById(UUID.fromString(idRemetente))
         val usuarioDestinatario: Optional<Usuario> = repository.findById(UUID.fromString(idDestinatario))
         if (usuarioDestinatario.isPresent && usuarioRemetente.isPresent) {
@@ -79,6 +92,12 @@ class UsuarioService(private val repository: UsuarioRepository) {
             log.info("Transferencia realizada com sucesso!")
             repository.save(copyDestinatario)
             repository.save(copyRemetente)
+            extrato.publicarEvento(Extrato(
+                idUsuario = UUID.fromString(idRemetente),
+                idDestinatario = UUID.fromString(idDestinatario),
+                transacao = TipoTransacao.TRANSFERENCIA,
+                valor = valor,
+            ))
         } else {
             log.error("Um dos usuarios informados nao foram encontrados!")
             throw NotFoundEntity("Um dos usuarios nao foram encontrados!")
